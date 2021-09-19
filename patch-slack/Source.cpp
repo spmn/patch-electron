@@ -2,7 +2,31 @@
 #include <psapi.h>
 #include <vector>
 
+// #define SLACK
+#define ATOM
+
+#if defined(SLACK)
 // Supports Electron 12.0.2 (Slack 4.15.0)
+
+#   define ELECTRON_PROCESS_NAME            L"Slack.exe"
+#   define ALLOW_ALL_INLINE_OFFSET          0x215420
+#   define ALLOW_EVAL_OFFSET                0x6FAFB0
+#   define EXPECTED_ALLOW_ALL_INLINE_INSTR  "\x44\x8D\x41\xEB\x41\x83"
+#   define EXPECTED_ALLOW_EVAL_INSTR        "\x41\x56\x56\x57\x53\x48"
+
+#elif defined(ATOM)
+// Supports Electron 9.4.4 (Atom 1.58.0)
+
+#   define ELECTRON_PROCESS_NAME            L"atom.exe"
+#   define ALLOW_ALL_INLINE_OFFSET          0x480A760
+#   define ALLOW_EVAL_OFFSET                0x4211820
+#   define EXPECTED_ALLOW_ALL_INLINE_INSTR  "\x56\x48\x83\xEC\x20\x48"
+#   define EXPECTED_ALLOW_EVAL_INSTR        "\x41\x56\x56\x57\x53\x48"
+
+#endif
+
+#define RETURN_TRUE_INSTR                   "\xB8\x01\x00\x00\x00\xC3"
+
 
 void Patch(HANDLE hProcess, uintptr_t patchAddress, LPCVOID expectedOldInstructions, LPCVOID newInstructions, SIZE_T size)
 {
@@ -34,7 +58,7 @@ void Patch(HANDLE hProcess, uintptr_t patchAddress, LPCVOID expectedOldInstructi
 
 void PatchIfNeeded(DWORD processID)
 {
-    const WCHAR kszExpectedProcessName[] = L"Slack.exe";
+    const WCHAR kszExpectedProcessName[] = ELECTRON_PROCESS_NAME;
     WCHAR szProcessName[MAX_PATH] = L"<unknown>";
 
     // Get a handle to the process.
@@ -79,9 +103,9 @@ void PatchIfNeeded(DWORD processID)
                 * .text:0000000140215428 73 20                       jnb     short loc_14021544A
                 */
 
-                patchAddress = baseAddress + 0x215420;
+                patchAddress = baseAddress + ALLOW_ALL_INLINE_OFFSET;
                 wprintf_s(L"  Patching blink::CSPSourceListAllowAllInline, address: %llx\n", patchAddress);
-                Patch(hProcess, patchAddress, "\x44\x8D\x41\xEB\x41\x83", "\xB8\x01\x00\x00\x00\xC3", 6);
+                Patch(hProcess, patchAddress, EXPECTED_ALLOW_ALL_INLINE_INSTR, RETURN_TRUE_INSTR, 6);
 
                 /*
                 * Patch to allow eval()
@@ -100,9 +124,9 @@ void PatchIfNeeded(DWORD processID)
                 * .text:00000001406FAFB5 48 83 EC 38                 sub     rsp, 38h%
                 */
 
-                patchAddress = baseAddress + 0x6FAFB0;
+                patchAddress = baseAddress + ALLOW_EVAL_OFFSET;
                 wprintf_s(L"  Patching blink::CSPDirectiveList::AllowEval, address: %llx\n", patchAddress);
-                Patch(hProcess, patchAddress, "\x41\x56\x56\x57\x53\x48", "\xB8\x01\x00\x00\x00\xC3", 6);
+                Patch(hProcess, patchAddress, EXPECTED_ALLOW_EVAL_INSTR, RETURN_TRUE_INSTR, 6);
 
                 wprintf_s(L"\n");
             }
